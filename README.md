@@ -43,7 +43,7 @@ SuperL 正是为践行这一理念而生。
 ## 📥 下载安装
 
 ### 最新版本
-- **v1.3** - [点击下载 APK](https://github.com/liukai17531751753-nb/SuperL-Language-Leaning/releases/tag/v1.3)
+- **v1.4** - [点击下载 APK](https://github.com/liukai17531751753-nb/SuperL-Language-Leaning/releases/tag/v1.4)
 
 ## 🚀 使用指南
 
