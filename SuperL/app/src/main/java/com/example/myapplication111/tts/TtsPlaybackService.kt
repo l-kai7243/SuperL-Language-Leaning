@@ -3,6 +3,7 @@ package com.example.myapplication111.tts
 import android.content.Context
 import com.example.myapplication111.data.AudioCache
 import com.example.myapplication111.data.SettingsRepository
+import com.example.myapplication111.util.FileReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -57,8 +58,18 @@ object TtsPlaybackService {
     }
 
     // ------------------------------------------------------------------
-    // 文本分段
+    // 文本预处理与分段
     // ------------------------------------------------------------------
+
+    /**
+     * 合成前文本归一化：
+     * 将由于排版产生的句中折行（如 "want to meet\nme"）平滑合并，
+     * 避免 TTS 引擎因遇到换行符而产生突兀停顿，同时保留段落之间的空行（\n\n）。
+     */
+    fun normalizeForSynthesis(text: String): String {
+        if (text.isBlank()) return ""
+        return FileReader.formatExtractedPdfText(text) ?: text.trim()
+    }
 
     /**
      * 把长文本切成不超过 maxChars 的若干段，尽量切在语义自然的位置。
@@ -69,16 +80,17 @@ object TtsPlaybackService {
      */
     fun splitTextIntoSegments(text: String, maxChars: Int = SettingsRepository.DEFAULT_SEGMENT_CHARS): List<String> {
         val limit = maxChars.coerceAtLeast(1)
-        val normalized = text.replace("\r\n", "\n").replace('\r', '\n').trim()
+        val normalized = normalizeForSynthesis(text)
         if (normalized.isEmpty()) return emptyList()
         if (normalized.length <= limit) return listOf(normalized)
 
         // 从高到低的分隔优先级；每个元素是一组候选分隔符
+        // 句末标点优先于单换行，防止段内排版折行把一个完整句子切成碎片
         val tiers = listOf(
             listOf("\n\n"),
-            listOf("\n"),
             listOf(". ", "。", "? ", "？", "! ", "！", "…", "; ", "；"),
             listOf(", ", "，", "、", ": ", "："),
+            listOf("\n"),
             listOf(" ")
         )
 
@@ -159,8 +171,9 @@ object TtsPlaybackService {
         config: SettingsRepository.ProviderConfig,
         text: String
     ): List<File> {
+        val cleanText = normalizeForSynthesis(text)
         val key = AudioCache.cacheKeyFor(
-            text, config.providerId, config.model, config.voice, config.language, config.speed
+            cleanText, config.providerId, config.model, config.voice, config.language, config.speed
         )
         val dir = AudioCache.ttsCacheDir(context)
         return AUDIO_EXTENSIONS.map { File(dir, "$key.full.$it") }
@@ -197,8 +210,9 @@ object TtsPlaybackService {
         text: String,
         extension: String
     ): File {
+        val cleanText = normalizeForSynthesis(text)
         val key = AudioCache.cacheKeyFor(
-            text, config.providerId, config.model, config.voice, config.language, config.speed
+            cleanText, config.providerId, config.model, config.voice, config.language, config.speed
         )
         return File(AudioCache.ttsCacheDir(context), "$key.full.$extension")
     }
@@ -253,7 +267,8 @@ object TtsPlaybackService {
     ): PrepareResult = withContext(Dispatchers.IO) {
         if (text.isBlank()) return@withContext PrepareResult.Failure("文本为空")
 
-        val segments = splitTextIntoSegments(text, maxChars)
+        val cleanText = normalizeForSynthesis(text)
+        val segments = splitTextIntoSegments(cleanText, maxChars)
         if (segments.isEmpty()) return@withContext PrepareResult.Failure("文本为空")
 
         suspend fun report(done: Int, total: Int) {
@@ -342,7 +357,7 @@ object TtsPlaybackService {
 
         // 3) 合并成整篇文件
         val ext = detectAudioExtension(segmentFiles.first())
-        val dest = wholeAudioPath(context, config, text, ext)
+        val dest = wholeAudioPath(context, config, cleanText, ext)
 
         try {
             if (segmentFiles.size == 1) {
@@ -398,14 +413,15 @@ object TtsPlaybackService {
         config: SettingsRepository.ProviderConfig,
         maxChars: Int
     ): File? = withContext(Dispatchers.IO) {
-        findWholeAudioFile(context, config, text)?.let { return@withContext it }
+        val cleanText = normalizeForSynthesis(text)
+        findWholeAudioFile(context, config, cleanText)?.let { return@withContext it }
 
-        val segments = splitTextIntoSegments(text, maxChars)
+        val segments = splitTextIntoSegments(cleanText, maxChars)
         if (segments.isEmpty()) return@withContext null
         val files = collectCachedSegments(context, config, segments)
         if (files.size != segments.size) return@withContext null
 
-        val dest = wholeAudioPath(context, config, text, detectAudioExtension(files.first()))
+        val dest = wholeAudioPath(context, config, cleanText, detectAudioExtension(files.first()))
         try {
             if (files.size == 1) {
                 files.first().copyTo(dest, overwrite = true)

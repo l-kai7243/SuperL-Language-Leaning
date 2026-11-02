@@ -133,10 +133,12 @@ object SegmentTimeline {
     private const val CLOSERS = "”’』」》）】>\"'"
 
     /**
-     * 把文本切成句子（保留句末标点）。规则：
+     * 把文本切成完整的自然句子（保留句末标点）。规则：
      * - 中文句末标点（。！？；…）必断；
      * - 英文 .!? 只有后面跟空白或到结尾才断（避免切碎小数点 3.14 这类数字）；
-     * - 换行视为断点（段落边界）。
+     * - 真正的段落边界或独立标题断句；
+     * - 排版造成的句中换行甚至误插的空行（如 "wanted to meet\n\nme."、"good feedback,\n\nI figured"）
+     *   一律识别为未完句延续，平滑合并为一个完整句子，绝不按物理行切碎句子。
      */
     fun splitSentences(text: String): List<String> {
         val normalized = text.replace("\r\n", "\n").replace('\r', '\n')
@@ -145,11 +147,41 @@ object SegmentTimeline {
         var i = 0
         while (i < normalized.length) {
             val c = normalized[i]
-            buffer.append(c)
             i++
 
+            if (c == '\n') {
+                val isBreak = isLineBreakSentenceEnd(normalized, i, buffer)
+                // 无论是否断句，把紧随其后的连续空白和多余空行一并跳过
+                while (i < normalized.length && (normalized[i] == ' ' || normalized[i] == '\t' || normalized[i] == '\n')) {
+                    i++
+                }
+                if (isBreak) {
+                    if (buffer.isNotBlank()) {
+                        sentences.add(buffer.toString().trim())
+                    }
+                    buffer.clear()
+                } else {
+                    // 句中折行延续：若上一行以断词连字符结尾则拼合单词，否则按中英文规则补单个空格
+                    val trimmedLen = buffer.length
+                    if (trimmedLen >= 2 && buffer[trimmedLen - 1] == '-' && buffer[trimmedLen - 2].isLetter()) {
+                        val prefixWord = buffer.takeLastWhile { it.isLetter() || it == '-' }.toString().lowercase()
+                        if (prefixWord !in setOf("non-", "self-", "well-", "co-", "re-", "pre-", "post-", "anti-", "multi-", "inter-", "over-", "under-")) {
+                            buffer.deleteCharAt(trimmedLen - 1)
+                        }
+                    } else if (buffer.isNotEmpty() && !buffer.endsWith(" ")) {
+                        val lastChar = buffer.last()
+                        val nextChar = if (i < normalized.length) normalized[i] else ' '
+                        if (!isCjkChar(lastChar) || !isCjkChar(nextChar)) {
+                            buffer.append(' ')
+                        }
+                    }
+                }
+                continue
+            }
+
+            buffer.append(c)
+
             val isBreak = when {
-                c == '\n' -> true
                 BREAK_CHARS.indexOf(c) >= 0 -> true
                 (c == '.' || c == '!' || c == '?') && (
                     i == normalized.length ||
@@ -181,6 +213,92 @@ object SegmentTimeline {
         }
         if (buffer.isNotBlank()) sentences.add(buffer.toString().trim())
         return sentences
+    }
+
+    private fun isCjkChar(c: Char): Boolean =
+        (c in '\u4E00'..'\u9FFF') || (c in '\u3000'..'\u303F') || (c in '\uFF00'..'\uFFEF')
+
+    /**
+     * 判定换行符（含连续空行）是否构成真正的断句点：
+     * 1. 当前行末尾已是句末标点（。！？；… 或 .!?），断句；
+     * 2. 下一行以列表标志（如 "- ", "* ", "1. "）开头，断句；
+     * 3. 当前行末尾是逗号、冒号、顿号、破折号、连字符或开括号，即使隔着空行也属于未完句，不断句；
+     * 4. 下一行以英文小写字母开头（如 "wanted to meet\n\nme."），必定是同一句的折行延续，不断句；
+     * 5. 当前行以英文介词/冠词/连词/助动词等无法收尾的虚词结尾，不断句；
+     * 6. 排除上述未完句情形后：若是空行（\n\n+）或独立短句/标题，则断句；若是普通长英文行单换行，则不断句。
+     */
+    private fun isLineBreakSentenceEnd(text: String, nextIndex: Int, buffer: StringBuilder): Boolean {
+        val bufTrimmed = buffer.toString().trim()
+        if (bufTrimmed.isEmpty()) return false
+
+        // 统计连续换行数并探查下一行的第一个非空白字符
+        var probe = nextIndex
+        var newlineCount = 1
+        while (probe < text.length && (text[probe] == ' ' || text[probe] == '\t' || text[probe] == '\n' || text[probe] == '\r')) {
+            if (text[probe] == '\n') newlineCount++
+            probe++
+        }
+        if (probe >= text.length) return true
+
+        val lastChar = bufTrimmed.last()
+        val nextChar = text[probe]
+
+        // 1. 缓冲区末尾已是句末标点
+        if (BREAK_CHARS.indexOf(lastChar) >= 0 || lastChar == '.' || lastChar == '!' || lastChar == '?') {
+            return true
+        }
+        if (CLOSERS.indexOf(lastChar) >= 0 && bufTrimmed.length >= 2) {
+            val prevChar = bufTrimmed[bufTrimmed.length - 2]
+            if (BREAK_CHARS.indexOf(prevChar) >= 0 || prevChar == '.' || prevChar == '!' || prevChar == '?') {
+                return true
+            }
+        }
+
+        // 2. 下一行开头是列表项标志（如 "- ", "* ", "1. "）
+        if (nextChar == '-' || nextChar == '*' || nextChar == '•' || nextChar == '#') {
+            return true
+        }
+        if (nextChar.isDigit() && probe + 1 < text.length && (text[probe + 1] == '.' || text[probe + 1] == '、' || text[probe + 1] == ')')) {
+            return true
+        }
+
+        // 3. 缓冲区末尾是逗号、冒号、顿号、破折号、连字符或开括号 -> 即使中间有空行也不断句
+        if (lastChar in ",，、:：—–-([（【“‘") {
+            return false
+        }
+
+        // 4. 下一行以英文小写字母开头（如 "wanted to meet\nme" 或 "wanted to meet\n\nme"）-> 不断句
+        if (nextChar in 'a'..'z') {
+            return false
+        }
+
+        // 5. 缓冲区末尾是英文虚词（介词、冠词、连词、代词、助动词），语法上句子未完 -> 不断句
+        val incompleteTailWords = Regex(
+            "\\b(the|a|an|to|of|in|on|at|by|for|with|from|into|onto|upon|about|above|below|under|over|" +
+                "between|among|through|during|before|after|since|until|while|where|when|who|whom|whose|" +
+                "which|that|this|these|those|my|your|his|her|its|our|their|and|or|but|nor|so|yet|as|if|" +
+                "than|because|although|though|unless|whether|is|are|was|were|be|been|being|have|has|had|" +
+                "do|does|did|will|would|shall|should|can|could|may|might|must|ought|need|wanted|going|" +
+                "trying|able|ready|likely|sure|certain|very|too|quite|rather|almost|enough|even|just|" +
+                "only|also|still|already)$",
+            RegexOption.IGNORE_CASE
+        )
+        if (incompleteTailWords.containsMatchIn(bufTrimmed)) {
+            return false
+        }
+
+        // 6. 经过上述语法检查后，如果是空行（\n\n+），说明是独立标题或段落分隔
+        if (newlineCount >= 2) {
+            return true
+        }
+
+        // 7. 单换行且为较长的非中文正文行（> 55 字符），通常是未完的跨行长句（如下一行恰巧是专有名词大写开头）
+        if (!isCjkChar(lastChar) && bufTrimmed.length > 55) {
+            return false
+        }
+
+        // 8. 默认：无标点的独立短行（如中文无标点行或独立标题）视为断点
+        return true
     }
 
     // ------------------------------------------------------------------

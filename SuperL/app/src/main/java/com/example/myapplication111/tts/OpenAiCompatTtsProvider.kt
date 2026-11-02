@@ -45,7 +45,7 @@ class OpenAiCompatTtsProvider : TtsProvider {
             val format = normalizeAudioFormat(config.language)
             val jsonBody = JSONObject().apply {
                 put("model", config.model.trim().ifBlank { DEFAULT_MODEL })
-                put("input", text)
+                put("input", TtsPlaybackService.normalizeForSynthesis(text))
                 if (config.voice.isNotBlank()) put("voice", config.voice.trim())
                 put("response_format", format)
                 // 仅在"接口变速"模式下才带速度；为 1.0 时保持请求与原行为完全一致，

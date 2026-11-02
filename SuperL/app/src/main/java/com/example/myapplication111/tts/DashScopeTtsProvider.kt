@@ -32,7 +32,7 @@ class DashScopeTtsProvider : TtsProvider {
             val jsonBody = JSONObject().apply {
                 put("model", config.model)
                 put("input", JSONObject().apply {
-                    put("text", text)
+                    put("text", TtsPlaybackService.normalizeForSynthesis(text))
                     put("voice", config.voice)
                     put("language_type", config.language.ifBlank { "English" })
                 })

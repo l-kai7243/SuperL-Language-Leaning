@@ -89,7 +89,19 @@ fun FavoritePlayerScreen(
     val scope = rememberCoroutineScope()
 
     var item by remember {
-        mutableStateOf(favoriteId?.let { id -> FavoritesRepository.load(context).firstOrNull { it.id == id } })
+        val loaded = favoriteId?.let { id -> FavoritesRepository.load(context).firstOrNull { it.id == id } }
+        val healed = loaded?.let { fav ->
+            val cleanText = TtsPlaybackService.normalizeForSynthesis(fav.text)
+            if (cleanText.isNotBlank() && cleanText != fav.text) {
+                FavoritesAudioStore.deleteFor(context, fav.id, fav.audioFileName)
+                val updated = fav.copy(text = cleanText, audioFileName = "")
+                FavoritesRepository.update(context, updated)
+                updated
+            } else {
+                fav
+            }
+        }
+        mutableStateOf(healed)
     }
 
     var isPlaying by remember { mutableStateOf(false) }

@@ -57,6 +57,37 @@ class SegmentTimelineTest {
     }
 
     @Test
+    fun `英文句中排版折行或误插空行均不断句并合并为单个完整句子`() {
+        assertSentences(
+            "want to meet\nme .",
+            listOf("want to meet me .")
+        )
+        assertSentences(
+            "But then I got a phone call, telling me that one of the senior American partners wanted to meet\n\nme. That was unusual; but then again,\n\nI figured it couldn’t be anything too bad.",
+            listOf(
+                "But then I got a phone call, telling me that one of the senior American partners wanted to meet me.",
+                "That was unusual; but then again, I figured it couldn’t be anything too bad."
+            )
+        )
+    }
+
+    @Test
+    fun `英文连字符换行不断句并还原单词`() {
+        assertSentences(
+            "This is infor-\nmation for you.",
+            listOf("This is information for you.")
+        )
+    }
+
+    @Test
+    fun `逗号后折行不断句`() {
+        assertSentences(
+            "The cat sat on the mat,\nand went to sleep.",
+            listOf("The cat sat on the mat, and went to sleep.")
+        )
+    }
+
+    @Test
     fun `换行是断句点`() {
         assertSentences(
             "第一段没有标点\n第二段也没有标点",

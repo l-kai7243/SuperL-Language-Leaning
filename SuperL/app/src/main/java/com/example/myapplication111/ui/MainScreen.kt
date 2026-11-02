@@ -112,8 +112,8 @@ fun MainScreen(
                         }
 
                         val id = newId()
-                        val title = textContent.trim().take(20).ifBlank { "未命名收藏" }
-                        val textSnapshot = textContent
+                        val textSnapshot = TtsPlaybackService.normalizeForSynthesis(textContent).ifBlank { textContent.trim() }
+                        val title = textSnapshot.lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.take(24) ?: "未命名收藏"
 
                         scope.launch {
                             // 只用本地缓存拼音频，绝不联网；缓存不齐时保存文本，听过一遍后自动补上
@@ -283,7 +283,10 @@ fun MainScreen(
                             return@Button
                         }
 
-                        val textSnapshot = textContent
+                        val textSnapshot = TtsPlaybackService.normalizeForSynthesis(textContent).ifBlank { textContent.trim() }
+                        if (textSnapshot != textContent) {
+                            onTextChange(textSnapshot)
+                        }
                         val config = SettingsRepository.getSynthesisConfig(context)
 
                         // 先看有没有整篇缓存：有就直接播，不联网、不计费

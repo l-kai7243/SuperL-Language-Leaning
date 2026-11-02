@@ -57,7 +57,7 @@ class EdgeTtsProvider : TtsProvider {
         config: SettingsRepository.ProviderConfig,
         text: String
     ): TtsResult = withContext(Dispatchers.IO) {
-        val trimmed = text.trim()
+        val trimmed = TtsPlaybackService.normalizeForSynthesis(text)
         if (trimmed.isBlank()) return@withContext TtsResult(null, "文本为空")
 
         val voice = normalizeVoice(config.voice)

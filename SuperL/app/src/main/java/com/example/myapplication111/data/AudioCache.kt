@@ -45,10 +45,11 @@ object AudioCache {
         language: String,
         speed: Float = 1.0f
     ): String {
+        // v2: 切换为自然段与完整语句断句后，与旧版按行断句的缓存键隔离，避免命中带句中停顿的旧音频
         val raw = if (speed == 1.0f) {
-            "$text|$providerId|$model|$voice|$language"
+            "v2|$text|$providerId|$model|$voice|$language"
         } else {
-            "$text|$providerId|$model|$voice|$language|$speed"
+            "v2|$text|$providerId|$model|$voice|$language|$speed"
         }
         val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
         return digest.joinToString("") { "%02x".format(it) }

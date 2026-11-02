@@ -36,8 +36,9 @@ class CustomTtsProvider : TtsProvider {
             if (config.customResponsePath.isBlank()) return@withContext TtsResult(null, "请填写响应提取路径")
 
             val client = ttsHttpClient()
-            val replacedUrl = replacePlaceholders(config.apiUrl, config, text, jsonEscape = false)
-            val bodyString = replacePlaceholders(config.customBodyTemplate, config, text, jsonEscape = true)
+            val normalizedText = TtsPlaybackService.normalizeForSynthesis(text)
+            val replacedUrl = replacePlaceholders(config.apiUrl, config, normalizedText, jsonEscape = false)
+            val bodyString = replacePlaceholders(config.customBodyTemplate, config, normalizedText, jsonEscape = true)
 
             val requestBuilder = Request.Builder()
                 .url(replacedUrl)

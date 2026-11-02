@@ -63,6 +63,28 @@ class TtsPlaybackServiceTest {
     }
 
     @Test
+    fun `合成归一化平滑处理折行并保留段落空行`() {
+        val input = """want to meet
+me .want to meet在一行，
+me到了下一行。
+
+这是第二段。"""
+        val normalized = TtsPlaybackService.normalizeForSynthesis(input)
+        assertTrue(normalized.contains("want to meet me .want to meet在一行，me到了下一行。"))
+        assertTrue(normalized.contains("\n\n这是第二段。"))
+    }
+
+    @Test
+    fun `分段切分时优先按句末标点断开而非生硬换行`() {
+        val sentence1 = "This is the first sentence that is complete. "
+        val sentence2 = "This is the second\nsentence with a line wrap."
+        val full = sentence1 + sentence2
+        val segments = TtsPlaybackService.splitTextIntoSegments(full, 50)
+        assertEquals(2, segments.size)
+        assertEquals(sentence1.trim(), segments[0])
+    }
+
+    @Test
     fun `短文本不会被切分`() {
         val text = "Hello world."
         assertEquals(listOf(text), TtsPlaybackService.splitTextIntoSegments(text, 1024))
