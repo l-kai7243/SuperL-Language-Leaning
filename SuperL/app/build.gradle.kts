@@ -13,10 +13,8 @@ android {
         applicationId = "com.example.myapplication111"
         minSdk = 24
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.1"
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        versionCode = 5
+        versionName = "1.5"
     }
 
     signingConfigs {
@@ -29,6 +27,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
         release {
             // 启用代码压缩和优化，减小 APK 体积
             isMinifyEnabled = true
@@ -62,10 +64,5 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.pdfbox.android)
     testImplementation(libs.junit)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(libs.androidx.junit)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
